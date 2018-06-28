@@ -1,10 +1,6 @@
 #include <stdafx.h>
 #include <windows.h>
 
-#include <iostream>
-#include <fstream>
-#include <memory>
-
 using namespace std;
 
 #ifndef NT_SUCCESS
@@ -153,7 +149,7 @@ HRESULT GetSymmetricKey(int version, PCWSTR password, PBYTE symmetricKey, int sy
 	unique_bcrypt_alg_handle hashAlgorithm{ nullptr, ::BCryptAlgorithmCloser };
 	RETURN_IF_NT_FAILED(BCryptOpenAlgorithmProvider(out_param(hashAlgorithm), BCRYPT_SHA512_ALGORITHM, MS_PRIMITIVE_PROVIDER, BCRYPT_ALG_HANDLE_HMAC_FLAG));
 
-	RETURN_IF_NT_FAILED(BCryptDeriveKeyPBKDF2(hashAlgorithm.get(), reinterpret_cast<PUCHAR>(const_cast<PWSTR>(password)), wcslen(password) * sizeof(WCHAR),
+	RETURN_IF_NT_FAILED(BCryptDeriveKeyPBKDF2(hashAlgorithm.get(), reinterpret_cast<PUCHAR>(const_cast<PWSTR>(password)), (ULONG)(wcslen(password)) * sizeof(WCHAR),
 						EncryptionParams[version - 1].SymmetricKeyDerivationSalt, EncryptionParams[version - 1].SymmetricKeyDerivationSaltLen, EncryptionParams[version - 1].SymmetricKeyDerivationIterationCount,
 		                symmetricKey, symmetricKeyLen, 0));
 
@@ -170,13 +166,13 @@ HRESULT Encrypt(int version, PCWSTR filename, PCWSTR password)
 	DWORD blockLength;
 	DWORD ignore;
 	RETURN_IF_NT_FAILED(BCryptGetProperty(encryptAlgorithm.get(), BCRYPT_BLOCK_LENGTH, (PBYTE)&blockLength, sizeof(blockLength), &ignore, 0));
-	wcout << "Block length is " << blockLength << endl;
+	// wcout << "Block length is " << blockLength << endl;
 
 	// Get the symmetric key
 	unique_ptr<BYTE[]> symmetricKey = make_unique<BYTE[]>(blockLength);
 	RETURN_IF_NULL_ALLOC(symmetricKey);
 	GetSymmetricKey(1, password, symmetricKey.get(), blockLength);
-	PrintByteBlob(symmetricKey.get(), blockLength);
+	// PrintByteBlob(symmetricKey.get(), blockLength);
 
 	// Allocate a buffer for the IV. This buffer is consumed during the encrypt process
 	unique_ptr<BYTE[]> iv = make_unique<BYTE[]>(blockLength);
@@ -208,7 +204,7 @@ HRESULT Encrypt(int version, PCWSTR filename, PCWSTR password)
 
 	// Work in units of about a page
 	int work_block_size = ((4096 + blockLength -1 ) / blockLength) * blockLength;
-	size_t work_buffer_size = size_t(work_block_size * 1.5);
+	ULONG work_buffer_size = work_block_size * 3 / 2;
 	std::unique_ptr<char[]> workBuffer = make_unique<char[]>(work_buffer_size); // Enough for in-place operation
 	RETURN_IF_NULL_ALLOC(workBuffer);
 
@@ -254,13 +250,13 @@ HRESULT Decrypt(int version, PCWSTR filename, PCWSTR password)
 	DWORD blockLength;
 	DWORD ignore;
 	RETURN_IF_NT_FAILED(BCryptGetProperty(decryptAlgorithm.get(), BCRYPT_BLOCK_LENGTH, (PBYTE)&blockLength, sizeof(blockLength), &ignore, 0));
-	wcout << "Block length is " << blockLength << endl;
+	// wcout << "Block length is " << blockLength << endl;
 
 	// Get the symmetric key
 	unique_ptr<BYTE[]> symmetricKey = make_unique<BYTE[]>(blockLength);
 	RETURN_IF_NULL_ALLOC(symmetricKey);
 	GetSymmetricKey(1, password, symmetricKey.get(), blockLength);
-	PrintByteBlob(symmetricKey.get(), blockLength);
+	// PrintByteBlob(symmetricKey.get(), blockLength);
 
 	// Allocate a buffer for the IV. This buffer is consumed during the encrypt process
 	unique_ptr<BYTE[]> iv = make_unique<BYTE[]>(blockLength);
@@ -292,7 +288,7 @@ HRESULT Decrypt(int version, PCWSTR filename, PCWSTR password)
 
 	// Work in units of about a page
 	int work_block_size = ((4096 + blockLength - 1) / blockLength) * blockLength;
-	size_t work_buffer_size = size_t(work_block_size * 1.5);
+	ULONG work_buffer_size = work_block_size * 3 / 2;
 	std::unique_ptr<char[]> workBuffer = make_unique<char[]>(work_buffer_size); // Enough for in-place operation
 	RETURN_IF_NULL_ALLOC(workBuffer);
 
