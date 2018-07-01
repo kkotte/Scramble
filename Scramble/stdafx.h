@@ -21,18 +21,18 @@
 #define RETURN_IF_NT_FAILED(x) \
     { \
         NTSTATUS __ntstatus = (x); \
-		if (!NT_SUCCESS(__ntstatus)) \
-		{                           \
-			wcout << "[" << #x << "]" << L" failed with " << __ntstatus; \
+        if (!NT_SUCCESS(__ntstatus)) \
+        {                           \
+            wcout << "[" << #x << "]" << L" failed with " << __ntstatus; \
             return HRESULT_FROM_WIN32(__ntstatus); \
-		} \
+        } \
     } \
 
 #define RETURN_IF_NULL_ALLOC(x) \
     { \
-		if (x == nullptr) \
-		{                           \
+        if (x == nullptr) \
+        {                           \
             return E_OUTOFMEMORY; \
-		} \
+        } \
     } \
 
