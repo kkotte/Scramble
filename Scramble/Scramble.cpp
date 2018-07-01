@@ -21,6 +21,39 @@ struct CommandLineOptions
     wstring password;
 };
 
+class HideConsoleInput
+{
+private:
+    DWORD _originalMode = 0;
+    bool  _origModeModified = false;
+public:
+
+    HideConsoleInput()
+    {
+        HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+        if (hStdin != INVALID_HANDLE_VALUE)
+        {
+            GetConsoleMode(hStdin, &_originalMode);
+            SetConsoleMode(hStdin, _originalMode & ~ENABLE_ECHO_INPUT);
+            _origModeModified = true;
+        }
+    }
+
+    ~HideConsoleInput()
+    {
+        if (_origModeModified)
+        {
+            HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+            if (hStdin != INVALID_HANDLE_VALUE)
+            {
+                SetConsoleMode(hStdin, _originalMode);
+                _origModeModified = false;
+            }
+        }
+    }
+
+};
+
 bool ParseCommandLineArgs(int argc, PWSTR argv[], CommandLineOptions &options)
 {
     for (int i = 1; i < argc; i++)
@@ -94,26 +127,6 @@ bool ParseCommandLineArgs(int argc, PWSTR argv[], CommandLineOptions &options)
                 return false;
             }
         }
-        else if (arg == L"-pw")
-        {
-            if (options.password.empty())
-            {
-                if (i + 1 < argc)
-                {
-                    options.password = argv[++i];
-                }
-                else
-                {
-                    wcout << L"Missing argument for switch " << arg << endl;
-                    return false;
-                }
-            }
-            else
-            {
-                wcout << L"Password specified more than once" << endl;
-                return false;
-            }
-        }
         else if (arg == L"-r")
         {
             options.processSubfolders = true;
@@ -122,8 +135,7 @@ bool ParseCommandLineArgs(int argc, PWSTR argv[], CommandLineOptions &options)
 
     // Validate all parameters have been specified
     if (options.operation == RequestedOp::OP_UNDEFINED ||
-        options.targetPath.empty() ||
-        options.password.empty())
+        options.targetPath.empty())
     {
         wcout << L"One or more required parameters has not been specified." << endl;
         return false;
@@ -134,7 +146,7 @@ bool ParseCommandLineArgs(int argc, PWSTR argv[], CommandLineOptions &options)
 
 void PrintUsage(PCWSTR exeName)
 {
-    wcout << exeName << L" [ENC|DEC] [-f <filename> | -p <path>] [-r] -pw <password>";
+    wcout << exeName << L" [ENC|DEC] [-f <filename> | -p <path>] [-r]";
 }
 
 #if 0
@@ -291,18 +303,27 @@ int wmain(int argc, PWSTR argv[])
 
     const int CURRENT_VERSION = 1;
 
+    // Get the password
+    {
+        HideConsoleInput hideInput;
+        wcout << L"Enter your password: ";
+        getline(wcin, options.password);
+        wcout << endl;
+    }
+
     if (options.operation == RequestedOp::OP_ENCRYPT)
     {
+        HideConsoleInput hideInput;
         wcout << L"Enter your password again: ";
         wstring passwordConfirmation;
         getline(wcin, passwordConfirmation);
+        wcout << endl;
 
         if (options.password != passwordConfirmation)
         {
-            wcout << L"Password mismatch!" << endl;
+            wcout << L"Password mismatch!" << options.password << L"/" << passwordConfirmation << endl;
             return 200;
         }
-
     }
 
     bool succeeded = ForEachTargetFile(options, [&](const wstring &filename)
