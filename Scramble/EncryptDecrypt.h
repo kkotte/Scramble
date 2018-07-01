@@ -3,8 +3,5 @@
 #include <string>
 
 HRESULT EnumerateProviders();
-HRESULT GetSymmetricKey(int version, PCWSTR password, PBYTE symmetricKey, int symmetricKeyLen);
-HRESULT Encrypt(int version, PCWSTR filename, PCWSTR password);
-HRESULT Decrypt(int version, PCWSTR filename, PCWSTR password);
-std::wstring GetEncryptedFilename(std::wstring inputFilename);
-std::wstring GetDecryptedFilename(std::wstring inputFilename);
+HRESULT Encrypt(int version, const std::wstring &filename, const std::wstring &password, const std::wstring &outputFilename);
+HRESULT Decrypt(int version, const std::wstring &filename, const std::wstring &password, const std::wstring &outputFilename);

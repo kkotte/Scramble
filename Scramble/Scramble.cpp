@@ -1,7 +1,9 @@
 #include "stdafx.h"
 #include "EncryptDecrypt.h"
+#include <filesystem>
 
 using namespace std;
+namespace fs = experimental::filesystem::v1;
 
 enum RequestedOp
 {
@@ -112,7 +114,7 @@ bool ParseCommandLineArgs(int argc, PWSTR argv[], CommandLineOptions &options)
 				return false;
 			}
 		}
-		else if (arg == L"-s")
+		else if (arg == L"-r")
 		{
 			options.processSubfolders = true;
 		}
@@ -132,10 +134,11 @@ bool ParseCommandLineArgs(int argc, PWSTR argv[], CommandLineOptions &options)
 
 void PrintUsage(PCWSTR exeName)
 {
-	wcout << exeName << L" [ENC|DEC] [-f <filename> | -p <path>] -pw <password>";
+	wcout << exeName << L" [ENC|DEC] [-f <filename> | -p <path>] [-r] -pw <password>";
 }
 
-bool ForEachFileInFolder(PCWSTR foldername, bool processSubfolders, std::function<bool(PCWSTR filename)> pred)
+#if 0
+bool ForEachFileInFolder(fs::path foldername, bool processSubfolders, std::function<bool(PCWSTR filename)> pred)
 {
 	std::unique_ptr<void, decltype(&::FindClose)> findHandle{ nullptr, ::FindClose };
 	WIN32_FIND_DATA fileData;
@@ -172,21 +175,49 @@ bool ForEachFileInFolder(PCWSTR foldername, bool processSubfolders, std::functio
 	}
 	return true;
 }
+#endif
 
-bool ForEachTargetFile(CommandLineOptions &options, std::function<bool(PCWSTR filename)> &&pred)
+bool ForEachTargetFile(CommandLineOptions &options, std::function<bool(const wstring &filename)> &&pred)
 {
 	if (!options.processFolders)
 	{
 		// Processing just a single file
-		return pred(options.targetPath.c_str());
+		return pred(options.targetPath);
 	}
-	else
+	else // Processing folders
 	{
-		return ForEachFileInFolder(options.targetPath.c_str(), options.processSubfolders, pred);
+		if (options.processSubfolders)
+		{
+			for (auto &p : fs::directory_iterator(options.targetPath))
+			{
+				if (fs::status(p.path()).type() == fs::file_type::regular)
+				{
+					if (!pred(p.path()))
+					{
+						return false;
+					}
+				}
+			}
+		}
+		else
+		{
+			for (auto &p : fs::recursive_directory_iterator(options.targetPath))
+			{
+				if (fs::status(p.path()).type() == fs::file_type::regular)
+				{
+					if (!pred(p.path()))
+					{
+						return false;
+					}
+				}
+			}
+		}
 	}
+
+	return true;
 }
 
-bool FilesAreIdentical(PCWSTR file1, PCWSTR file2)
+bool FilesAreIdentical(const std::wstring &file1, const std::wstring &file2)
 {
 	std::ifstream inputFile1(file1, std::ios::binary);
 	if (!inputFile1.is_open())
@@ -228,6 +259,26 @@ bool FilesAreIdentical(PCWSTR file1, PCWSTR file2)
 	return true;
 }
 
+const wstring EncryptExtension = L".enc";
+wstring GetEncryptedFilename(wstring inputFilename)
+{
+	wstring temp = inputFilename;
+	std::size_t found = temp.find_last_of(L".");
+
+	return (found == string::npos) ? temp + EncryptExtension
+		: temp.substr(0, found) + EncryptExtension + temp.substr(found);
+}
+
+bool IsEncryptedFilename(wstring inputFilename)
+{
+	return (inputFilename.find(EncryptExtension) != string::npos);
+}
+
+wstring GetDecryptedFilename(wstring inputFilename)
+{
+	return inputFilename.replace(inputFilename.find(EncryptExtension), EncryptExtension.length(), L"");
+}
+
 int wmain(int argc, PWSTR argv[])
 {
 	// EnumerateProviders();
@@ -254,35 +305,46 @@ int wmain(int argc, PWSTR argv[])
 
 	}
 
-	bool succeeded = ForEachTargetFile(options, [&](PCWSTR filename)
+	bool succeeded = ForEachTargetFile(options, [&](const wstring &filename)
 	{
 		switch (options.operation)
 		{
 		case OP_ENCRYPT:
-			wcout << L"Encypting [" << filename << L"]...";
-			Encrypt(CURRENT_VERSION, filename, options.password.c_str());
-			wcout << L"Verifying...";
-			Decrypt(CURRENT_VERSION, GetEncryptedFilename(filename).c_str(), options.password.c_str());
-
-			// File compare source and original
-			wstring decryptedFile = GetDecryptedFilename(GetEncryptedFilename(filename).c_str());
-			if (!FilesAreIdentical(filename, decryptedFile.c_str()))
 			{
-				wcout << L"**ERROR** Encrypting and decrypting [" << filename << L"] does not give back the same file!!" << endl;
-				return false;
-			}
-			else
-			{
-				wcout << L"Done." << endl;
-				DeleteFile(decryptedFile.c_str());
-			}
+				wcout << L"Encypting [" << filename << L"]...";
+				const wstring encryptedFilename = GetEncryptedFilename(filename);
+				Encrypt(CURRENT_VERSION, filename, options.password, encryptedFilename);
+				wcout << L"Verifying...";
+				const wstring tempDecryptedFilename = encryptedFilename + L"dec.temp";
+				Decrypt(CURRENT_VERSION, encryptedFilename, options.password, tempDecryptedFilename);
 
+				// File compare source and original
+				if (!FilesAreIdentical(filename, tempDecryptedFilename))
+				{
+					wcout << L"**ERROR** Encrypting and decrypting [" << filename << L"] does not give back the same file!!" << endl;
+					return false;
+				}
+				else
+				{
+					wcout << L"Done." << endl;
+					fs::remove(tempDecryptedFilename);
+				}
+			}
 			break;
 		
 		case OP_DECRYPT:
-			wcout << L"Decypting [" << filename << L"]...";
-			Decrypt(CURRENT_VERSION, filename, options.password.c_str());
-			wcout << L"Done." << endl;
+			{
+				wcout << L"Decypting [" << filename << L"]...";
+				if (IsEncryptedFilename(filename))
+				{
+					Decrypt(CURRENT_VERSION, filename, options.password, GetDecryptedFilename(filename));
+					wcout << L"Done." << endl;
+				}
+				else
+				{
+					wcout << L"Does not appear to be an encypted file. Skipping..." << endl;
+				}
+			}
 			break;
 		}
 		return true;

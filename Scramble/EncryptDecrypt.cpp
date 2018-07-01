@@ -13,7 +13,6 @@ using namespace std;
 
 UCHAR SymmetricKeyDerivationSalt_V1[] = { 12, 34, 31, 4, 65, 53, 43, 1, 12, 43 };
 UCHAR iv_V1[] = {12, 32, 12 ,65, 23, 133, 43, 133, 168, 32, 131, 12, 32, 12 ,65, 23, 133, 43, 133, 168, 32, 131 };
-const wstring EncryptExtension = L".enc";
 
 const struct 
 {
@@ -88,28 +87,6 @@ void PrintByteBlob(PBYTE blob, int len)
 	wcout << "}" << dec << endl;
 }
 
-wstring GetEncryptedFilename(wstring inputFilename)
-{
-	wstring temp = inputFilename;
-	std::size_t found = temp.find_last_of(L".");
-
-	return (found == string::npos) ? temp + EncryptExtension
-		                           : temp.substr(0, found) + EncryptExtension + temp.substr(found);
-}
-
-wstring GetDecryptedFilename(wstring inputFilename)
-{
-	wstring temp = inputFilename;
-	std::size_t found = temp.find(L".enc.");
-	if (found == string::npos)
-	{
-		wcout << L"Unexpected filename: " << temp.c_str() << endl;
-		return L"";
-	}
-
-	return temp.replace(found, wcslen(L".enc."), L".dec.");
-}
-
 void BCryptAlgorithmCloser(BCRYPT_ALG_HANDLE hAlgortithm)
 {
 	BCryptCloseAlgorithmProvider(hAlgortithm, 0);
@@ -156,7 +133,7 @@ HRESULT GetSymmetricKey(int version, PCWSTR password, PBYTE symmetricKey, int sy
 	return S_OK;
 }
 
-HRESULT Encrypt(int version, PCWSTR filename, PCWSTR password)
+HRESULT Encrypt(int version, const std::wstring &filename, const std::wstring &password, const std::wstring &outputFilename)
 {
 	// Open the algorithm handle
 	unique_bcrypt_alg_handle encryptAlgorithm{ nullptr, ::BCryptAlgorithmCloser };
@@ -171,7 +148,7 @@ HRESULT Encrypt(int version, PCWSTR filename, PCWSTR password)
 	// Get the symmetric key
 	unique_ptr<BYTE[]> symmetricKey = make_unique<BYTE[]>(blockLength);
 	RETURN_IF_NULL_ALLOC(symmetricKey);
-	GetSymmetricKey(1, password, symmetricKey.get(), blockLength);
+	GetSymmetricKey(1, password.c_str(), symmetricKey.get(), blockLength);
 	// PrintByteBlob(symmetricKey.get(), blockLength);
 
 	// Allocate a buffer for the IV. This buffer is consumed during the encrypt process
@@ -186,8 +163,6 @@ HRESULT Encrypt(int version, PCWSTR filename, PCWSTR password)
 	unique_bcrypt_key_handle keyHandle{ nullptr, ::BCryptDestroyKey };
 	RETURN_IF_NT_FAILED(BCryptGenerateSymmetricKey(encryptAlgorithm.get(), out_param(keyHandle), nullptr, 0, symmetricKey.get(), blockLength, 0));
 		
-	wstring outputFilename = GetEncryptedFilename(filename);
-
 	std::ifstream inputFile(filename, std::ios::binary);
 	if (!inputFile.is_open())
 	{
@@ -198,7 +173,7 @@ HRESULT Encrypt(int version, PCWSTR filename, PCWSTR password)
 	std::ofstream outputFile(outputFilename, std::ios::binary);
 	if (!outputFile.is_open())
 	{
-		wcout << L"Error opening file: " << outputFilename.c_str() << endl;
+		wcout << L"Error opening file: " << outputFilename << endl;
 		return E_UNEXPECTED;
 	}
 
@@ -240,7 +215,7 @@ HRESULT Encrypt(int version, PCWSTR filename, PCWSTR password)
 	return S_OK;
 }
 
-HRESULT Decrypt(int version, PCWSTR filename, PCWSTR password)
+HRESULT Decrypt(int version, const std::wstring &filename, const std::wstring &password, const std::wstring &outputFilename)
 {
 	// Open the algorithm handle
 	unique_bcrypt_alg_handle decryptAlgorithm{ nullptr, ::BCryptAlgorithmCloser };
@@ -255,7 +230,7 @@ HRESULT Decrypt(int version, PCWSTR filename, PCWSTR password)
 	// Get the symmetric key
 	unique_ptr<BYTE[]> symmetricKey = make_unique<BYTE[]>(blockLength);
 	RETURN_IF_NULL_ALLOC(symmetricKey);
-	GetSymmetricKey(1, password, symmetricKey.get(), blockLength);
+	GetSymmetricKey(1, password.c_str(), symmetricKey.get(), blockLength);
 	// PrintByteBlob(symmetricKey.get(), blockLength);
 
 	// Allocate a buffer for the IV. This buffer is consumed during the encrypt process
@@ -270,19 +245,17 @@ HRESULT Decrypt(int version, PCWSTR filename, PCWSTR password)
 	unique_bcrypt_key_handle keyHandle{ nullptr, ::BCryptDestroyKey };
 	RETURN_IF_NT_FAILED(BCryptGenerateSymmetricKey(decryptAlgorithm.get(), out_param(keyHandle), nullptr, 0, symmetricKey.get(), blockLength, 0));
 
-	wstring outputFilename = GetDecryptedFilename(filename);
-
 	std::ifstream inputFile(filename, std::ios::binary);
 	if (!inputFile.is_open())
 	{
-		wcout << L"Error opening file: " << filename << endl;
+		wcout << L"Error opening file: " << filename << L".";
 		return E_UNEXPECTED;
 	}
 
 	std::ofstream outputFile(outputFilename, std::ios::binary);
 	if (!outputFile.is_open())
 	{
-		wcout << L"Error opening file: " << outputFilename.c_str() << endl;
+		wcout << L"Error opening file: " << outputFilename << L".";
 		return E_UNEXPECTED;
 	}
 

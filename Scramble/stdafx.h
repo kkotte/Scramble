@@ -23,7 +23,7 @@
         NTSTATUS __ntstatus = (x); \
 		if (!NT_SUCCESS(__ntstatus)) \
 		{                           \
-			wcout << "[" << #x << "]" << L" failed with " << __ntstatus << endl; \
+			wcout << "[" << #x << "]" << L" failed with " << __ntstatus; \
             return HRESULT_FROM_WIN32(__ntstatus); \
 		} \
     } \
